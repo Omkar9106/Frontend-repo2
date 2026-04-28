@@ -16,6 +16,8 @@ export default function ScanPage() {
   const [useCamera, setUseCamera] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => setIsLoaded(true), 100);
@@ -56,25 +58,96 @@ export default function ScanPage() {
   };
 
   const startCamera = async () => {
+    setCameraLoading(true);
+    setCameraError(null);
+    
     try {
-      setCameraError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      console.log("Starting camera...");
+      
+      // Check if mediaDevices is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera API is not supported in this browser');
+      }
+      
+      // Check if we're on HTTPS
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        throw new Error('Camera access requires HTTPS or localhost');
+      }
+      
+      console.log("Requesting camera access...");
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment', // Prefer rear camera on mobile
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      });
+      
+      console.log("Camera access granted");
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        const video = videoRef.current;
+        video.srcObject = stream;
+        
+        // Add event listeners for video ready state
+        video.onloadedmetadata = () => {
+          console.log("Video metadata loaded");
+          setVideoReady(true);
+        };
+        
+        video.oncanplay = () => {
+          console.log("Video can play");
+          setVideoReady(true);
+        };
+        
+        video.onplay = () => {
+          console.log("Video started playing");
+          // Small delay to ensure video is actually rendering
+          setTimeout(() => setVideoReady(true), 500);
+        };
+        
+        video.onerror = (e) => {
+          console.error("Video error:", e);
+          setCameraError("Video playback error. Please try again.");
+        };
+        
+        video.play().catch(e => {
+          console.error("Video play error:", e);
+          setCameraError("Failed to start video. Please try again.");
+        });
+        
         setUseCamera(true);
         setUploadedFile(null);
+        setVideoReady(false); // Reset to false initially
+        console.log("Camera started successfully");
       }
     } catch (err) {
       console.error("Error accessing camera:", err);
-      if (err instanceof Error && err.name === 'NotAllowedError') {
-        setCameraError('Camera access was denied. Click the camera icon 📷 in your browser\'s address bar to allow camera permissions, or upload a file instead.');
-      } else if (err instanceof Error && err.name === 'NotFoundError') {
-        setCameraError('No camera device found. Please check if your device has a camera connected, or upload a file instead.');
-      } else if (err instanceof Error && err.name === 'NotSecureError' || location.protocol !== 'https:') {
-        setCameraError('Camera access requires a secure connection (HTTPS). Please restart the development server with HTTPS enabled, or upload a file instead.');
+      if (err instanceof Error) {
+        switch (err.name) {
+          case 'NotAllowedError':
+            setCameraError('Camera access was denied. Please allow camera permissions in your browser settings, or upload a file instead.');
+            break;
+          case 'NotFoundError':
+            setCameraError('No camera device found. Please check if your device has a camera connected, or upload a file instead.');
+            break;
+          case 'NotSecureError':
+          case 'SecurityError':
+            setCameraError('Camera access requires a secure connection (HTTPS). Please use HTTPS or upload a file instead.');
+            break;
+          case 'NotReadableError':
+            setCameraError('Camera is already in use by another application. Please close other apps using the camera, or upload a file instead.');
+            break;
+          case 'OverconstrainedError':
+            setCameraError('Camera does not support the required settings. Try a different device or upload a file instead.');
+            break;
+          default:
+            setCameraError(`Unable to access camera: ${err.message}. You can still use the file upload option instead.`);
+        }
       } else {
-        setCameraError(`Unable to access camera: ${err instanceof Error ? err.message : 'Unknown error'}. You can still use the file upload option instead.`);
+        setCameraError('Unable to access camera. You can still use the file upload option instead.');
       }
+    } finally {
+      setCameraLoading(false);
     }
   };
 
@@ -84,27 +157,75 @@ export default function ScanPage() {
       stream.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
       setUseCamera(false);
+      setVideoReady(false);
     }
   };
 
   const captureFromCamera = () => {
-    if (videoRef.current) {
+    console.log("Capturing photo from camera...");
+    
+    if (!videoRef.current) {
+      console.error("Video ref is null");
+      setCameraError("Camera not ready. Please try again.");
+      return;
+    }
+    
+    if (!videoReady) {
+      console.error("Video not ready yet");
+      setCameraError("Camera is still starting. Please wait a moment and try again.");
+      return;
+    }
+    
+    const video = videoRef.current;
+    console.log("Video dimensions:", video.videoWidth, "x", video.videoHeight);
+    console.log("Video readyState:", video.readyState);
+    
+    // Check if video is actually playing
+    if (video.readyState < 2) { // HAVE_CURRENT_DATA
+      console.error("Video not ready yet");
+      setCameraError("Camera not ready. Please wait a moment and try again.");
+      return;
+    }
+    
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error("Video dimensions are 0");
+      setCameraError("Camera not providing video. Please try restarting the camera.");
+      return;
+    }
+    
+    try {
       const canvas = document.createElement('canvas');
-      const video = videoRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0);
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
-            setUploadedFile(file);
-            stopCamera();
-            setCameraError(null);
-          }
-        }, 'image/jpeg', 0.9);
+      
+      if (!ctx) {
+        console.error("Could not get canvas context");
+        setCameraError("Failed to capture photo. Please try again.");
+        return;
       }
+      
+      console.log("Drawing video to canvas...");
+      ctx.drawImage(video, 0, 0);
+      
+      console.log("Converting canvas to blob...");
+      canvas.toBlob((blob) => {
+        if (blob) {
+          console.log("Blob created successfully, size:", blob.size);
+          const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+          console.log("File created:", file.name, file.size);
+          setUploadedFile(file);
+          stopCamera();
+          setCameraError(null);
+          console.log("Photo captured successfully!");
+        } else {
+          console.error("Failed to create blob");
+          setCameraError("Failed to capture photo. Please try again.");
+        }
+      }, 'image/jpeg', 0.9);
+    } catch (error) {
+      console.error("Error during capture:", error);
+      setCameraError("Failed to capture photo. Please try again.");
     }
   };
 
@@ -459,9 +580,14 @@ export default function ScanPage() {
                         <div className="flex justify-center gap-4">
                           <button
                             onClick={captureFromCamera}
-                            className="px-6 py-3 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors"
+                            disabled={!videoReady}
+                            className={`px-6 py-3 rounded-full transition-colors ${
+                              videoReady 
+                                ? 'bg-green-600 text-white hover:bg-green-700' 
+                                : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                            }`}
                           >
-                            📸 Capture Photo
+                            {videoReady ? '📸 Capture Photo' : '⏳ Camera Starting...'}
                           </button>
                           <button
                             onClick={stopCamera}
@@ -503,10 +629,24 @@ export default function ScanPage() {
                             </button>
                             <button
                               onClick={startCamera}
-                              className="px-6 py-3 border-2 border-cyan-400 text-cyan-400 rounded-full hover:bg-cyan-400 hover:text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25"
+                              disabled={cameraLoading}
+                              className={`px-6 py-3 border-2 rounded-full transition-all hover:shadow-lg ${
+                                cameraLoading 
+                                  ? 'border-gray-500 text-gray-500 cursor-not-allowed' 
+                                  : 'border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-white hover:shadow-cyan-500/25'
+                              }`}
                             >
-                              <FiCamera className="inline-block mr-2" />
-                              Use Camera
+                              {cameraLoading ? (
+                                <>
+                                  <div className="inline-block mr-2 w-4 h-4 border-2 border-t-transparent border-current rounded-full animate-spin"></div>
+                                  Starting Camera...
+                                </>
+                              ) : (
+                                <>
+                                  <FiCamera className="inline-block mr-2" />
+                                  Use Camera
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>

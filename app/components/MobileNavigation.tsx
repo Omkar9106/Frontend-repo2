@@ -96,7 +96,7 @@ export default function MobileNavigation() {
   return (
     <>
       {/* Mobile Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 border-b border-cyan-500/20 backdrop-blur-lg">
+      <header className="relative w-full bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 border-b border-cyan-500/20 backdrop-blur-lg">
         <div className="flex items-center justify-between px-4 py-3">
           {/* Logo */}
           <div className="flex items-center space-x-3">

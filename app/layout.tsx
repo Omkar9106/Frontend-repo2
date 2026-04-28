@@ -6,7 +6,6 @@ import SidebarNavigation from "./components/SidebarNavigation";
 import MobileNavigation from "./components/MobileNavigation";
 import { AlertProvider } from "./contexts/AlertContext";
 import { AlertBanner } from "./components/AlertBanner";
-import ResponsiveTest from "./components/ResponsiveTest";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,10 +56,9 @@ export default function RootLayout({
         <div className="relative z-10 flex flex-1">
           <MobileNavigation />
           <SidebarNavigation />
-          <main className="flex-1 ml-0 md:ml-64 transition-all duration-300 pt-16 md:pt-0">
+          <main className="flex-1 ml-0 md:ml-64 transition-all duration-300">
             {children}
           </main>
-          <ResponsiveTest />
         </div>
       </AlertProvider>
     </body>
