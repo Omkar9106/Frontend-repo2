@@ -53,12 +53,14 @@ export default function RootLayout({
           <div className="absolute bottom-1/3 left-1/4 w-24 h-24 bg-pink-500/10 rounded-full rotating-element animation-delay-1000"></div>
         </div>
         
-        <div className="relative z-10 flex flex-1">
+        <div className="relative z-10 flex flex-1 flex-col">
           <MobileNavigation />
-          <SidebarNavigation />
-          <main className="flex-1 ml-0 md:ml-64 transition-all duration-300">
-            {children}
-          </main>
+          <div className="flex flex-1">
+            <SidebarNavigation />
+            <main className="flex-1 ml-0 md:ml-64 transition-all duration-300">
+              {children}
+            </main>
+          </div>
         </div>
       </AlertProvider>
     </body>
