@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+    // Use production backend URL if env var is not set
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://phillsafe-backend.onrender.com';
     return [
       {
         source: '/api/:path*',
